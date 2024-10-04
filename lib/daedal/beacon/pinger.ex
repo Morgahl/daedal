@@ -131,7 +131,12 @@ defmodule Daedal.Beacon.Pinger do
     |> setup_next_loop()
   end
 
-  defp maybe_connect(state = %__MODULE__{connection_state: :connected}), do: state
+  defp maybe_connect(state = %__MODULE__{connection_state: :connected}) do
+    cond do
+      state.beacon_node in Node.list(:hidden) -> state
+      true -> connect(state, state.beacon_node)
+    end
+  end
 
   defp maybe_connect(state = %__MODULE__{beacon_node: beacon_nodes}) when is_list(beacon_nodes) do
     Enum.shuffle(beacon_nodes)
