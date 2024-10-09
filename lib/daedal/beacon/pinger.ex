@@ -131,13 +131,6 @@ defmodule Daedal.Beacon.Pinger do
     |> setup_next_loop()
   end
 
-  defp maybe_connect(state = %__MODULE__{connection_state: :connected}) do
-    cond do
-      state.beacon_node in Node.list(:hidden) -> state
-      true -> connect(state, state.beacon_node)
-    end
-  end
-
   defp maybe_connect(state = %__MODULE__{beacon_node: beacon_nodes}) when is_list(beacon_nodes) do
     Enum.shuffle(beacon_nodes)
     |> Enum.reduce(state, fn
@@ -146,45 +139,56 @@ defmodule Daedal.Beacon.Pinger do
     end)
   end
 
+  defp maybe_connect(state = %__MODULE__{connection_state: :connected}) do
+    cond do
+      state.beacon_node in Node.list(:hidden) -> state
+      true -> connect(state, state.beacon_node)
+    end
+  end
+
   defp maybe_connect(state = %__MODULE__{beacon_node: beacon_node}), do: connect(state, beacon_node)
 
   defp connect(state = %__MODULE__{beacon_cookie: beacon_cookie, deployment: deployment}, beacon_node) do
     Logger.debug("#{inspect(__MODULE__)} connecting to Beacon server", self: Node.self(), beacon_node: beacon_node)
 
-    case RPC.call(beacon_node, beacon_cookie, Registry, :register, [deployment]) do
-      {:ok, :registered} ->
-        Logger.info("#{inspect(__MODULE__)} registered deployment with Beacon server",
-          self: Node.self(),
-          beacon_node: beacon_node
-        )
+    if beacon_node in Node.list(:hidden) do
+      state
+    else
+      case RPC.call(beacon_node, beacon_cookie, Registry, :register, [deployment]) do
+        {:ok, :registered} ->
+          Logger.info("#{inspect(__MODULE__)} registered deployment with Beacon server",
+            self: Node.self(),
+            beacon_node: beacon_node
+          )
 
-        %__MODULE__{state | connection_state: :connected, beacon_node: beacon_node}
+          %__MODULE__{state | connection_state: :connected, beacon_node: beacon_node}
 
-      {:ok, :already_registered} ->
-        Logger.warning("#{inspect(__MODULE__)} already registered deployment with Beacon server",
-          self: Node.self(),
-          beacon_node: beacon_node
-        )
+        {:ok, :already_registered} ->
+          Logger.warning("#{inspect(__MODULE__)} already registered deployment with Beacon server",
+            self: Node.self(),
+            beacon_node: beacon_node
+          )
 
-        %__MODULE__{state | connection_state: :connected, beacon_node: beacon_node}
+          %__MODULE__{state | connection_state: :connected, beacon_node: beacon_node}
 
-      {:error, reason} ->
-        Logger.error("#{inspect(__MODULE__)} failed to register deployment with Beacon server",
-          self: Node.self(),
-          beacon_node: beacon_node,
-          reason: inspect(reason)
-        )
+        {:error, reason} ->
+          Logger.error("#{inspect(__MODULE__)} failed to register deployment with Beacon server",
+            self: Node.self(),
+            beacon_node: beacon_node,
+            reason: inspect(reason)
+          )
 
-        %__MODULE__{state | connection_state: :connecting}
+          %__MODULE__{state | connection_state: :connecting}
 
-      {:exit, reason} ->
-        Logger.error("#{inspect(__MODULE__)} failed to register deployment with Beacon server",
-          self: Node.self(),
-          beacon_node: beacon_node,
-          reason: inspect(reason)
-        )
+        {:exit, reason} ->
+          Logger.error("#{inspect(__MODULE__)} failed to register deployment with Beacon server",
+            self: Node.self(),
+            beacon_node: beacon_node,
+            reason: inspect(reason)
+          )
 
-        %__MODULE__{state | connection_state: :connecting}
+          %__MODULE__{state | connection_state: :connecting}
+      end
     end
   end
 

@@ -64,6 +64,9 @@ config :daedal, DaedalWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :daedal, dev_routes: true
 
+config :logger,
+  level: System.get_env("LOG_LEVEL", "debug") |> String.to_atom()
+
 config :logger, :console,
   format: "$time [$level] $message\n$metadata\n",
   metadata: :all

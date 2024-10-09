@@ -13,18 +13,24 @@ defmodule Daedal.Beacon.Registry do
   alias Daedal.Beacon.Deployment
   alias Daedal.RPC
 
+  defstruct [
+    :gc_interval
+  ]
+
+  @default_opts [
+    gc_interval: 60_000
+  ]
+
   # Public API
   def child_spec(opts) do
-    opts = Keyword.take(opts, [])
-
     %{
       id: __MODULE__,
       start: {__MODULE__, :start_link, [opts]}
     }
   end
 
-  def start_link(_) do
-    GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   def register(deployment = %Deployment{}) do
@@ -52,10 +58,24 @@ defmodule Daedal.Beacon.Registry do
 
   # GenServer Callbacks
   @impl GenServer
-  def init(:ok) do
+  def init(opts) do
     Process.flag(:trap_exit, true)
+
+    state =
+      Keyword.validate!(opts, @default_opts)
+      |> then(&struct!(__MODULE__, &1))
+
     :ets.new(__MODULE__, [:set, :protected, :named_table, read_concurrency: true])
-    {:ok, %{}}
+
+    # TODO: setup Node.monitor() here
+
+    {:ok, dbg(state), {:continue, :gc_schedule}}
+  end
+
+  @impl GenServer
+  def handle_continue(:gc_schedule, state) do
+    Process.send_after(self(), :gc, state.gc_interval)
+    {:noreply, state}
   end
 
   @impl GenServer
@@ -82,6 +102,25 @@ defmodule Daedal.Beacon.Registry do
     :ets.delete(__MODULE__, node)
     Logger.debug("#{inspect(__MODULE__)} successfully unregistered deployment", self: Node.self(), node: node)
     {:reply, :unregistered, state}
+  end
+
+  @impl GenServer
+  def handle_info(:gc, state) do
+    Logger.debug("#{inspect(__MODULE__)} garbage collecting deployments", self: Node.self())
+
+    nodes =
+      [Node.list(), Node.list(:hidden)]
+      |> List.flatten()
+      |> Enum.uniq()
+
+    for {node, _deployment} <- :ets.tab2list(__MODULE__), node not in nodes do
+      :ets.delete(__MODULE__, node)
+      Logger.debug("#{inspect(__MODULE__)} garbage collected deployment", self: Node.self(), node: node)
+    end
+
+    Logger.debug("#{inspect(__MODULE__)} garbage collection complete", self: Node.self())
+
+    {:noreply, state, {:continue, :gc_schedule}}
   end
 
   @impl GenServer

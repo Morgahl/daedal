@@ -36,11 +36,7 @@ defmodule Daedal.Beacon do
 
   defp child_specs(opts) do
     [
-      Daedal.Beacon.Registry.child_spec(Keyword.get(opts, :registry_opts, [])),
-      Daedal.Beacon.Pinger.child_spec(
-        beacon_cookie: Node.get_cookie(),
-        beacon_node: Node.self()
-      )
+      Daedal.Beacon.Registry.child_spec(Keyword.get(opts, :registry_opts, []))
     ]
   end
 end
