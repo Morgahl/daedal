@@ -1,4 +1,4 @@
-defmodule Daedal.Beacon.Registry do
+defmodule DaedalBeacon.Registry do
   @moduledoc """
   `#{inspect(__MODULE__)}` is the registry responsible for managing the active deployments
   that have pinged the Beacon server. Each Elixir node in the cluster has its own independent
@@ -10,7 +10,7 @@ defmodule Daedal.Beacon.Registry do
 
   require Logger
 
-  alias Daedal.Beacon.Deployment
+  alias DaedalBeacon.Deployment
   alias Daedal.RPC
 
   defstruct [
@@ -69,7 +69,7 @@ defmodule Daedal.Beacon.Registry do
 
     # TODO: setup Node.monitor() here
 
-    {:ok, dbg(state), {:continue, :gc_schedule}}
+    {:ok, state, {:continue, :gc_schedule}}
   end
 
   @impl GenServer
@@ -158,6 +158,6 @@ defmodule Daedal.Beacon.Registry do
       beacon_nodes: beacon_nodes
     )
 
-    RPC.multicast(nodes, Daedal.Beacon.Pinger, :handoff, [beacon_nodes])
+    RPC.multicast(nodes, DaedalBeacon.Pinger, :handoff, [beacon_nodes])
   end
 end

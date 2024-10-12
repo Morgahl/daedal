@@ -1,4 +1,4 @@
-defmodule Daedal.Beacon.Pinger do
+defmodule DaedalBeacon.Pinger do
   @moduledoc """
   `#{inspect(__MODULE__)}` is the GenServer added to the deployment's supervision tree that gathers
   metadata and gracefully connects to the Beacon server to register the deployment. It is
@@ -10,8 +10,8 @@ defmodule Daedal.Beacon.Pinger do
   use GenServer
   require Logger
 
-  alias Daedal.Beacon.Deployment
-  alias Daedal.Beacon.Registry
+  alias DaedalBeacon.Deployment
+  alias DaedalBeacon.Registry
   alias Daedal.RPC
 
   defstruct [
@@ -84,17 +84,22 @@ defmodule Daedal.Beacon.Pinger do
   end
 
   @impl GenServer
-  def handle_call({:handoff, new_beacon_nodes}, _from, state) do
+  def handle_call({:handoff, new_beacon_nodes}, _from, state = %__MODULE__{beacon_node: old_node}) do
     Logger.debug("#{inspect(__MODULE__)} received handoff message",
       self: Node.self(),
       new_beacon_nodes: new_beacon_nodes
     )
 
-    {:noreply,
-     state
-     |> cancel_next_loop()
-     |> disconnect()
-     |> merge_nodes(new_beacon_nodes), {:continue, :connect}}
+    state
+    |> cancel_next_loop()
+    |> disconnect()
+    |> merge_nodes(new_beacon_nodes)
+    |> case do
+      # If the old node is the only node in the list after the merge, we should schedule the next
+      # instead of connecting right away and risk connecting to a shutting down node.
+      %__MODULE{beacon_node: [^old_node]} = state -> {:noreply, setup_next_loop(state)}
+      state -> {:noreply, state, {:continue, :connect}}
+    end
   end
 
   @impl GenServer
@@ -116,7 +121,7 @@ defmodule Daedal.Beacon.Pinger do
 
   @impl GenServer
   def terminate(reason, state) do
-    Logger.info("#{inspect(__MODULE__)} is terminating", reason: inspect(reason), state: inspect(state))
+    Logger.info("#{inspect(__MODULE__)} is terminating", reason: inspect(reason))
 
     state
     |> cancel_next_loop()
@@ -198,7 +203,7 @@ defmodule Daedal.Beacon.Pinger do
       beacon_node: state.beacon_node
     )
 
-    RPC.call(state.beacon_node, state.beacon_cookie, Daedal.Beacon.Registry, :unregister, [Node.self()])
+    RPC.call(state.beacon_node, state.beacon_cookie, DaedalBeacon.Registry, :unregister, [Node.self()])
     Node.disconnect(state.beacon_node)
     %__MODULE__{state | connection_state: :connecting}
   end

@@ -11,7 +11,7 @@ defmodule Daedal.Application do
       # Daedal.Repo,
       {DNSCluster, query: Application.get_env(:daedal, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Daedal.PubSub},
-      Daedal.Beacon,
+      DaedalBeacon,
       DaedalWeb.Endpoint
     ]
 

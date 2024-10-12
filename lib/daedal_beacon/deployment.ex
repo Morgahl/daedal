@@ -1,6 +1,6 @@
-defmodule Daedal.Beacon.Deployment do
+defmodule DaedalBeacon.Deployment do
   @moduledoc """
-   `Daedal.Beacon.Deployment` is a struct that represents a deployment in the Beacon server. This is
+   `DaedalBeacon.Deployment` is a struct that represents a deployment in the Beacon server. This is
    used to keep track of the deployments that have registered with the Beacon server.
   """
 
