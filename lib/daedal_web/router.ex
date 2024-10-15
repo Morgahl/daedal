@@ -27,9 +27,11 @@ defmodule DaedalWeb.Router do
   scope "/" do
     pipe_through [:browser, :admins_only]
 
+    import OrionWeb.Router
     import Phoenix.LiveDashboard.Router
 
     live_dashboard "/dashboard", metrics: DaedalWeb.Telemetry
+    live_orion "/orion", live_socket_path: "/live"
   end
 
   defp admin_basic_auth(conn, _opts) do
