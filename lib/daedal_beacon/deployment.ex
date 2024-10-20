@@ -22,20 +22,18 @@ defmodule DaedalBeacon.Deployment do
     @spec new() :: [t()]
     def new do
       for {app, description, version} <- :application.which_applications() do
-        spec = Application.spec(app)
-
         {app,
          %__MODULE__{
            name: app,
-           description: List.to_string(description),
-           version: List.to_string(version),
-           spec: Keyword.drop(spec, [:description, :vsn])
+           description: to_string(description),
+           version: to_string(version),
+           spec: Keyword.drop(Application.spec(app), [:description, :vsn])
          }}
       end
     end
   end
 
-  defmodule CPUInfo do
+  defmodule CPU do
     defstruct [
       :cpu_topology,
       :smp_support,
@@ -64,7 +62,7 @@ defmodule DaedalBeacon.Deployment do
     end
   end
 
-  defmodule OSInfo do
+  defmodule OS do
     defstruct [
       :time_warp_mode,
       :kernel_poll,
@@ -87,13 +85,13 @@ defmodule DaedalBeacon.Deployment do
         time_warp_mode: :erlang.system_info(:time_warp_mode),
         kernel_poll: :erlang.system_info(:kernel_poll),
         threads: :erlang.system_info(:threads),
-        system_architecture: List.to_string(:erlang.system_info(:system_architecture)),
+        system_architecture: to_string(:erlang.system_info(:system_architecture)),
         wordsize: :erlang.system_info(:wordsize)
       }
     end
   end
 
-  defmodule VersionInfo do
+  defmodule Runtime do
     defstruct [
       :otp_release,
       :erts_version,
@@ -109,8 +107,8 @@ defmodule DaedalBeacon.Deployment do
     @spec new() :: t()
     def new do
       %__MODULE__{
-        otp_release: List.to_string(:erlang.system_info(:otp_release)),
-        erts_version: List.to_string(:erlang.system_info(:version)),
+        otp_release: to_string(:erlang.system_info(:otp_release)),
+        erts_version: to_string(:erlang.system_info(:version)),
         emu_type: :erlang.system_info(:emu_type)
       }
     end
@@ -124,17 +122,17 @@ defmodule DaedalBeacon.Deployment do
     ]
 
     @type t :: %__MODULE__{
-            os_info: OSInfo.t(),
-            cpu_info: CPUInfo.t(),
-            version_info: VersionInfo.t()
+            os_info: OS.t(),
+            cpu_info: CPU.t(),
+            version_info: Runtime.t()
           }
 
     @spec new() :: t()
     def new do
       %__MODULE__{
-        os_info: OSInfo.new(),
-        cpu_info: CPUInfo.new(),
-        version_info: VersionInfo.new()
+        os_info: OS.new(),
+        cpu_info: CPU.new(),
+        version_info: Runtime.new()
       }
     end
   end
@@ -144,7 +142,9 @@ defmodule DaedalBeacon.Deployment do
     :name,
     :version,
     :applications,
-    :system_info,
+    :os_info,
+    :cpu_info,
+    :runtime_info,
     :metadata
   ]
 
@@ -153,7 +153,9 @@ defmodule DaedalBeacon.Deployment do
           name: atom(),
           version: any(),
           applications: [Applications.t()],
-          system_info: SystemInfo.t(),
+          os_info: OS.t(),
+          cpu_info: CPU.t(),
+          runtime_info: Runtime.t(),
           metadata: Keyword.t()
         }
 
@@ -164,7 +166,7 @@ defmodule DaedalBeacon.Deployment do
 
     version =
       case get_application_key(app, :vsn) do
-        version when is_list(version) -> List.to_string(version)
+        version when is_list(version) -> to_string(version)
         version -> version
       end
 
@@ -173,7 +175,9 @@ defmodule DaedalBeacon.Deployment do
       name: app,
       version: version,
       applications: Applications.new(),
-      system_info: SystemInfo.new(),
+      os_info: OS.new(),
+      cpu_info: CPU.new(),
+      runtime_info: Runtime.new(),
       metadata: metadata
     }
   end

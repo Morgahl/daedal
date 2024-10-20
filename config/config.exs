@@ -11,6 +11,14 @@ config :daedal,
   ecto_repos: [Daedal.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+config :daedal, :ash_domains, [Daedal.Beacon]
+
+config :ash,
+  include_embedded_source_by_default?: false,
+  default_page_type: :keyset
+
+config :ash, :policies, no_filter_static_forbidden_reads?: false
+
 # Configures the endpoint
 config :daedal, DaedalWeb.Endpoint,
   url: [host: "localhost"],
