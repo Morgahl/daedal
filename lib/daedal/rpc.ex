@@ -19,15 +19,11 @@ defmodule Daedal.RPC do
   @type multicall_result(type) :: [call_result(type)]
   @type multicast_result :: [cast_result()]
 
-  @spec ping(node(), cookie()) :: boolean()
-  def ping(node, cookie) do
+  @spec connect_hidden(node(), cookie()) :: boolean() | :ignored
+  def connect_hidden(node, cookie) do
     node
     |> prep_cookie(cookie)
-    |> Node.ping()
-    |> case do
-      :pong -> true
-      :pang -> false
-    end
+    |> :net_kernel.hidden_connect_node()
   end
 
   @spec call(node(), cookie(), function()) :: call_result(term())
@@ -156,7 +152,7 @@ defmodule Daedal.RPC do
 
   @spec prep_cookie(node(), cookie()) :: cookie()
   defp prep_cookie(node, cookie) do
-    match?(^cookie, :erlang.get_cookie(node)) || Node.set_cookie(node, cookie)
+    match?(^cookie, :erlang.get_cookie(node)) or Node.set_cookie(node, cookie)
     node
   end
 

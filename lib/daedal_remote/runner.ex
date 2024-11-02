@@ -33,8 +33,7 @@ defmodule DaedalRemote.Runner do
     opts = Keyword.validate!(opts, @default_opts)
 
     quote location: :keep do
-      use GenServer
-      require Logger
+      use Daedal.GenServer
       @behaviour unquote(__MODULE__)
       @before_compile unquote(__MODULE__)
 
@@ -59,32 +58,26 @@ defmodule DaedalRemote.Runner do
 
       @impl GenServer
       def init(opts) do
-        Process.flag(:trap_exit, true)
-        Logger.debug("#{inspect(__MODULE__)} starting", self: Node.self())
-
         with {:ok, opts} <- Keyword.validate(opts, @default_opts),
              {:ok, state} <- maybe_setup() do
-          Logger.debug("#{inspect(__MODULE__)} setup complete", self: Node.self())
           {:ok, %RunnerState{task_state: state, shutdown: opts[:shutdown]}, {:continue, :run}}
         else
-          {:error, reason} ->
-            Logger.error("#{inspect(__MODULE__)} failed to start", self: Node.self(), reason: reason)
-            {:stop, reason}
+          {:error, reason} -> {:stop, reason}
         end
       end
 
       @impl GenServer
       def handle_continue(:run, %RunnerState{} = state) do
-        Logger.debug("#{inspect(__MODULE__)} running", self: Node.self())
+        Logger.debug("#{inspect(__MODULE__)} running", node: Node.self())
 
         case start_task(state) do
           {:ok, task_pid} ->
             ref = Process.monitor(task_pid)
-            Logger.debug("#{inspect(__MODULE__)} task started", self: Node.self())
+            Logger.debug("#{inspect(__MODULE__)} task started", node: Node.self())
             {:noreply, %RunnerState{state | task_pid: task_pid, monitor_ref: ref, status: :running}}
 
           {:error, reason} ->
-            Logger.error("#{inspect(__MODULE__)} failed to start task", self: Node.self(), reason: reason)
+            Logger.error("#{inspect(__MODULE__)} failed to start task", node: Node.self(), reason: reason)
             {:stop, reason, state}
         end
       end
@@ -96,13 +89,13 @@ defmodule DaedalRemote.Runner do
 
       @impl GenServer
       def handle_info({:DOWN, ref, :process, _pid, reason}, %RunnerState{} = state) when ref == state.monitor_ref do
-        Logger.debug("#{inspect(__MODULE__)} task finished unexpectedly", self: Node.self(), reason: reason)
+        Logger.debug("#{inspect(__MODULE__)} task finished unexpectedly", node: Node.self(), reason: reason)
         {:stop, reason, state}
       end
 
       @impl GenServer
       def handle_info({:result, result}, %RunnerState{} = state) do
-        Logger.debug("#{inspect(__MODULE__)} task completed successfully", self: Node.self())
+        Logger.debug("#{inspect(__MODULE__)} task completed successfully", node: Node.self())
         {:stop, :normal, %RunnerState{state | status: :completed, result: result}}
       end
 
@@ -113,8 +106,6 @@ defmodule DaedalRemote.Runner do
 
       @impl GenServer
       def terminate(reason, %RunnerState{} = state) do
-        Logger.debug("#{inspect(__MODULE__)} terminating", self: Node.self(), reason: reason)
-
         state
         |> maybe_stop_task(reason)
         |> maybe_teardown(reason, Map.get(state, :result, nil))
@@ -148,10 +139,9 @@ defmodule DaedalRemote.Runner do
 
             receive do
               {:DOWN, ^monitor_ref, :process, _pid, reason} ->
-                Logger.debug("#{inspect(__MODULE__)} task shutdown confirmed with reason #{inspect(reason)}", self: Node.self())
+                Logger.debug("#{inspect(__MODULE__)} task shutdown confirmed with reason #{inspect(reason)}", node: Node.self())
             after
-              shutdown ->
-                Logger.warning("#{inspect(__MODULE__)} task did not shut down in time", self: Node.self())
+              shutdown -> Logger.warning("#{inspect(__MODULE__)} task did not shut down in time", node: Node.self())
             end
 
             Process.demonitor(monitor_ref, [:flush])
@@ -159,7 +149,7 @@ defmodule DaedalRemote.Runner do
             %{state | task_pid: nil, monitor_ref: nil}
 
           true ->
-            Logger.debug("#{inspect(__MODULE__)} task already stopped", self: Node.self())
+            Logger.debug("#{inspect(__MODULE__)} task already stopped", node: Node.self())
             state
         end
       end

@@ -39,6 +39,7 @@ defmodule Daedal.MixProject do
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:floki, ">= 0.30.0", only: :test},
       {:heroicons, github: "tailwindlabs/heroicons", tag: "v2.1.1", sparse: "optimized", app: false, compile: false, depth: 1},
+      {:libcluster, "~> 3.3"},
       {:jason, "~> 1.2"},
       {:orion, "~> 1.0"},
       {:phoenix_ecto, "~> 4.5"},

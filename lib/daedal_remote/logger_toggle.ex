@@ -30,17 +30,17 @@ defmodule DaedalRemote.LoggerToggle do
   Initializes the ETS table. This should be called when the application starts.
   """
   @spec init() :: :ets.tid()
-  def init do
-    :ets.new(__MODULE__, [:set, :protected, :named_table, read_concurrency: true])
-  end
+  def init, do: :ets.new(__MODULE__, [:set, :protected, :named_table, read_concurrency: true])
 
   @doc """
   Deinitializes the ETS table. This should be called when the application stops.
   """
   @spec deinit() :: :ok
   def deinit do
-    reset()
-    :ets.delete(__MODULE__)
+    with :ok <- reset(),
+         true <- :ets.delete(__MODULE__) do
+      :ok
+    end
   end
 
   @doc """
@@ -62,8 +62,7 @@ defmodule DaedalRemote.LoggerToggle do
     :ok
   end
 
-  def set(level),
-    do: {:error, "Invalid logger level: #{inspect(level)}. Supported levels are: #{inspect(@logger_levels)}"}
+  def set(level), do: {:error, "Invalid logger level: #{inspect(level)}. Supported levels are: #{inspect(@logger_levels)}"}
 
   @doc """
   Resets the logging level to the previously stored value in the ETS table.
@@ -86,9 +85,7 @@ defmodule DaedalRemote.LoggerToggle do
   Returns the list of supported logger levels.
   """
   @spec logger_levels() :: [logger_level()]
-  def logger_levels do
-    @logger_levels
-  end
+  def logger_levels, do: @logger_levels
 
   # Convenience functions for setting the logging level enumerated from the list of supported levels
   # derived from Logger.levels() and the additional :all and :none levels.

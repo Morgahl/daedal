@@ -20,6 +20,12 @@ if System.get_env("DAEDAL_SERVER") do
   config :daedal, DaedalWeb.Endpoint, server: true
 end
 
+config :daedal, DaedalWeb.Endpoint,
+  http: [
+    ip: {0, 0, 0, 0},
+    port: String.to_integer(System.get_env("PORT", "4000"))
+  ]
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

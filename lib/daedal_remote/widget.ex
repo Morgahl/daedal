@@ -4,7 +4,7 @@ defmodule DaedalRemote.Widget do
   Daedal. It is responsible for the common administrative and utility interface for the Remote context.
   """
 
-  use GenServer
+  use Daedal.GenServer
 
   require Logger
 
@@ -23,15 +23,12 @@ defmodule DaedalRemote.Widget do
 
   @impl GenServer
   def init(opts) do
-    Process.flag(:trap_exit, true)
     LoggerToggle.init()
-    Logger.info("#{inspect(__MODULE__)} starting with options: #{inspect(opts)}")
     {:ok, opts}
   end
 
   @impl GenServer
   def terminate(_reason, _state) do
-    Logger.info("#{inspect(__MODULE__)} terminating")
     LoggerToggle.deinit()
     :ok
   end
@@ -45,11 +42,5 @@ defmodule DaedalRemote.Widget do
       _ ->
         {:reply, LoggerToggle.set(level), state}
     end
-  end
-
-  @impl GenServer
-  def handle_info({:EXIT, _pid, reason}, state) do
-    Logger.error("#{inspect(__MODULE__)} exiting with reason: #{inspect(reason)}")
-    {:stop, reason, state}
   end
 end

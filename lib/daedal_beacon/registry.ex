@@ -6,9 +6,7 @@ defmodule DaedalBeacon.Registry do
   to resolve deployments across the cluster.
   """
 
-  use GenServer
-
-  require Logger
+  use Daedal.GenServer
 
   alias DaedalBeacon.Deployment
   alias Daedal.RPC
@@ -45,8 +43,8 @@ defmodule DaedalBeacon.Registry do
     case :ets.lookup(__MODULE__, node) do
       [] ->
         Logger.debug("#{inspect(__MODULE__)} could not find deployment, expanding search to cluster",
-          self: Node.self(),
-          node: node
+          node: Node.self(),
+          lookup_node: node
         )
 
         lookup_across_cluster(node, timeout)
@@ -59,8 +57,6 @@ defmodule DaedalBeacon.Registry do
   # GenServer Callbacks
   @impl GenServer
   def init(opts) do
-    Process.flag(:trap_exit, true)
-
     state =
       Keyword.validate!(opts, @default_opts)
       |> then(&struct!(__MODULE__, &1))
@@ -84,15 +80,15 @@ defmodule DaedalBeacon.Registry do
       [] ->
         :ets.insert(__MODULE__, {deployment.node, deployment})
 
-        Logger.debug("#{inspect(__MODULE__)} successfully registered deployment",
-          self: Node.self(),
+        Logger.info("#{inspect(__MODULE__)} successfully registered deployment",
+          node: Node.self(),
           deployment: deployment
         )
 
         {:reply, :registered, state}
 
       _ ->
-        Logger.debug("#{inspect(__MODULE__)} deployment already registered", self: Node.self(), deployment: deployment)
+        Logger.warning("#{inspect(__MODULE__)} deployment already registered", node: Node.self(), deployment: deployment)
         {:reply, :already_registered, state}
     end
   end
@@ -100,13 +96,13 @@ defmodule DaedalBeacon.Registry do
   @impl GenServer
   def handle_call({:unregister, node}, _from, state) do
     :ets.delete(__MODULE__, node)
-    Logger.debug("#{inspect(__MODULE__)} successfully unregistered deployment", self: Node.self(), node: node)
+    Logger.info("#{inspect(__MODULE__)} successfully unregistered deployment", node: Node.self(), unregistered_node: node)
     {:reply, :unregistered, state}
   end
 
   @impl GenServer
   def handle_info(:gc, state) do
-    Logger.debug("#{inspect(__MODULE__)} garbage collecting deployments", self: Node.self())
+    Logger.debug("#{inspect(__MODULE__)} garbage collecting deployments", node: Node.self())
 
     nodes =
       [Node.list(), Node.list(:hidden)]
@@ -115,24 +111,16 @@ defmodule DaedalBeacon.Registry do
 
     for {node, _deployment} <- :ets.tab2list(__MODULE__), node not in nodes do
       :ets.delete(__MODULE__, node)
-      Logger.debug("#{inspect(__MODULE__)} garbage collected deployment", self: Node.self(), node: node)
+      Logger.debug("#{inspect(__MODULE__)} garbage collected deployment", node: Node.self(), collected_node: node)
     end
 
-    Logger.debug("#{inspect(__MODULE__)} garbage collection complete", self: Node.self())
+    Logger.debug("#{inspect(__MODULE__)} garbage collection complete", node: Node.self())
 
     {:noreply, state, {:continue, :gc_schedule}}
   end
 
   @impl GenServer
-  def handle_info({:EXIT, _pid, reason}, state) do
-    Logger.error("#{inspect(__MODULE__)} received exit signal", self: Node.self(), reason: inspect(reason))
-    {:stop, reason, state}
-  end
-
-  @impl GenServer
-  def terminate(reason, state) do
-    Logger.info("#{inspect(__MODULE__)} is terminating", reason: inspect(reason), state: inspect(state))
-
+  def terminate(_reason, _state) do
     delete_all_local()
     |> send_handoff(Node.list())
   end
@@ -140,6 +128,11 @@ defmodule DaedalBeacon.Registry do
   defp lookup_across_cluster(node, timeout) do
     Node.list()
     |> RPC.multicall(:ets, :lookup, [__MODULE__, node], timeout)
+    |> Enum.map(&elem(&1, 1))
+    |> Enum.map(fn
+      {:ok, values} -> values
+      _ -> []
+    end)
     |> List.flatten()
   end
 
@@ -152,12 +145,12 @@ defmodule DaedalBeacon.Registry do
   end
 
   defp send_handoff(nodes, beacon_nodes) do
-    Logger.debug("#{inspect(__MODULE__)} sending handoff message",
-      self: Node.self(),
+    Logger.info("#{inspect(__MODULE__)} sending handoff messages to nodes",
+      node: Node.self(),
       nodes: nodes,
       beacon_nodes: beacon_nodes
     )
 
-    RPC.multicast(nodes, DaedalBeacon.Pinger, :handoff, [beacon_nodes])
+    RPC.multicall(nodes, DaedalBeacon.Pinger, :handoff, [beacon_nodes])
   end
 end

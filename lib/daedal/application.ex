@@ -5,11 +5,20 @@ defmodule Daedal.Application do
 
   @impl true
   def start(_type, _args) do
+    topologies = [
+      daedal: [
+        strategy: Cluster.Strategy.Epmd,
+        config: [hosts: [:"daedal1@127.0.0.1", :"daedal2@127.0.0.1", :"daedal3@127.0.0.1"]]
+      ]
+    ]
+
     children = [
       DaedalWeb.Telemetry,
       # TODO: Start this when we are ready to look at persisting data
       # Daedal.Repo,
-      {DNSCluster, query: Application.get_env(:daedal, :dns_cluster_query) || :ignore},
+      # TODO: Start this when we are in a DNS addressable environment
+      # {DNSCluster, query: Application.get_env(:daedal, :dns_cluster_query) || :ignore},
+      {Cluster.Supervisor, [topologies, [name: Daedal.ClusterSupervisor]]},
       {Phoenix.PubSub, name: Daedal.PubSub},
       DaedalBeacon,
       DaedalWeb.Endpoint
