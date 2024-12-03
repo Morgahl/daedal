@@ -8,6 +8,7 @@ defmodule Daedal.Application do
     topologies = [
       daedal: [
         strategy: Cluster.Strategy.Epmd,
+        timeout: 30_000,
         config: [hosts: [:"daedal1@127.0.0.1", :"daedal2@127.0.0.1", :"daedal3@127.0.0.1"]]
       ]
     ]

@@ -7,6 +7,10 @@ defmodule DaedalRemote.DynamicSupervisor do
 
   require Logger
 
+  @runners [
+    DaedalRemote.Task
+  ]
+
   # Public API
   def child_spec(opts) do
     %{
@@ -15,21 +19,29 @@ defmodule DaedalRemote.DynamicSupervisor do
     }
   end
 
-  def start_link(opts) do
-    DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts), do: DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
+
+  def start_child(runner, module, args, opts \\ []) when runner in @runners do
+    with {:module, module} <- Code.ensure_loaded(module),
+         true <- runner.implements_behaviour?(module),
+         {:ok, _pid} <- DynamicSupervisor.start_child(__MODULE__, module.child_spec(Keyword.merge(opts, extra_args: args))) do
+      {:running, module}
+    else
+      {:error, reason} -> {:error, {reason, module}}
+      false -> {:error, {:behaviour_not_implemented, module}}
+    end
   end
 
-  def start_child(DaedalRemote.Runner, module, opts \\ []) do
+  def stop_child(runner, module) when runner in @runners do
     with {:module, module} <- Code.ensure_loaded(module),
-         true <- DaedalRemote.Runner.implements_behaviour?(module) do
-      DynamicSupervisor.start_child(__MODULE__, module.child_spec(opts))
+         true <- runner.implements_behaviour?(module),
+         pid when is_pid(pid) <- Process.whereis(module),
+         :ok <- DynamicSupervisor.terminate_child(__MODULE__, pid) do
+      {:stopped, module}
     else
-      {:error, reason} ->
-        {:error, reason}
-
-      false ->
-        Logger.error("Module #{inspect(module)} does not implement the DaedalRemote.Runner behaviour")
-        {:error, {:behaviour_not_implemented, DaedalRemote.Runner, module}}
+      nil -> {:error, {:not_found, module}}
+      {:error, reason} -> {:error, {reason, module}}
+      false -> {:error, {:behaviour_not_implemented, module}}
     end
   end
 

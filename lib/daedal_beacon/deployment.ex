@@ -37,6 +37,8 @@ defmodule DaedalBeacon.Deployment do
   end
 
   defmodule CPUInfo do
+    @derive {Inspect, except: [:cpu_topology]}
+
     defstruct [
       :cpu_topology,
       :smp_support,
@@ -140,11 +142,13 @@ defmodule DaedalBeacon.Deployment do
     end
   end
 
+  @derive {Inspect, except: [:applications]}
+
   defstruct [
     :node,
     :name,
     :version,
-    # :applications,
+    :applications,
     :system_info,
     :neighbors,
     :metadata
@@ -154,7 +158,7 @@ defmodule DaedalBeacon.Deployment do
           node: atom(),
           name: atom(),
           version: any(),
-          # applications: [Applications.t()],
+          applications: [Applications.t()],
           system_info: SystemInfo.t(),
           neighbors: [{:visible, [atom()]} | {:hidden, [atom()]}],
           metadata: Keyword.t()
@@ -175,7 +179,7 @@ defmodule DaedalBeacon.Deployment do
       node: Node.self(),
       name: app,
       version: version,
-      # applications: Applications.new(),
+      applications: Applications.new(),
       system_info: SystemInfo.new(),
       neighbors: get_neighbors(),
       metadata: metadata
