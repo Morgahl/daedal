@@ -1,0 +1,183 @@
+<!-- livebook:{"app_settings":{"access_type":"public","auto_shutdown_ms":5000,"multi_session":true,"output_type":"rich","show_existing_sessions":true,"slug":"looky-loo"}} -->
+
+# Looky Loo
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.14"}
+])
+```
+
+## Section
+
+<!-- livebook:{"reevaluate_automatically":true} -->
+
+```elixir
+defmodule Graph do
+  def new(nodes, show: show) do
+    """
+    erDiagram
+    #{nodes
+      |> drop_hidden(!show)
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.map_join("\n", fn {node, _} -> "#{extract_base_name(node)}[\"#{node}\"] {}" end)}
+    #{nodes
+      |> drop_hidden(!show)
+      |> Enum.map(&clean_node/1)
+      |> Enum.flat_map(&extract_edges/1)
+      |> Enum.sort()
+      |> Enum.map_join("\n", fn {node1, node2, visibility} -> "#{node1} ||--|| #{node2} : #{visibility}" end)}
+    """
+  end
+
+  defp drop_hidden(nodes, false), do: nodes
+  defp drop_hidden(nodes, true) do
+    for {node, dep} <- nodes do
+      new =
+        Map.update!(dep, :neighbors, fn nbrs ->
+          Keyword.put(nbrs, :hidden, [])
+        end)
+      {node, new}
+    end
+  end
+  
+  defp clean_node({_, %{node: fq_node, neighbors: neighbors}}) do
+    base_name = extract_base_name(fq_node)
+    cleaned_neighbors = Enum.map(neighbors, fn {visibility, neighbor_nodes} ->
+      {visibility, Enum.map(neighbor_nodes, &extract_base_name/1)}
+    end)
+    {base_name, %{neighbors: cleaned_neighbors}}
+  end
+  
+  defp extract_base_name(qualified_name) do
+    qualified_name
+    |> to_string()
+    |> String.split("@")
+    |> List.first()
+    |> String.to_atom()
+  end
+  
+  defp extract_edges({node, %{neighbors: neighbors}}) do
+    neighbors
+    |> Enum.flat_map(fn {visibility, neighbor_nodes} ->
+      Enum.map(neighbor_nodes, fn neighbor -> {node, neighbor, visibility} end)
+    end)
+    |> Enum.map(fn {node1, node2, visibility} ->
+      # Ensure consistent ordering to avoid duplicates
+      if node1 > node2 do
+        {node2, node1, visibility}
+      else
+        {node1, node2, visibility}
+      end
+    end)
+    |> Enum.uniq()
+  end
+end
+
+defmodule Details do
+  def new(nodes) do
+    nodes
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {n, d} -> {d.name, n, Kino.Tree.new(d)} end)
+    |> Enum.group_by(fn {nm, _, _} -> nm end, fn {_, n, d} -> {n, d} end)
+    |> Enum.map(fn {a, nds} -> {a, Kino.Layout.tabs(nds)} end)
+    |> Kino.Layout.tabs()
+  end
+end
+
+defmodule DaedalQuery do
+  require Kino.RPC
+  
+  def fetch_deployments(node, cookie) do
+    node = String.to_atom(node)
+    cookie = String.to_atom(cookie)
+    unless match?(^cookie, :erlang.get_cookie(node)), do: Node.set_cookie(node, cookie)
+    try do
+      nodes =
+        Kino.RPC.eval_string(
+          node, 
+          ~S"""
+          DaedalBeacon.Registry.list()
+          """, file: __ENV__.file)
+      Node.disconnect(node)
+      {:ok, nodes}
+    catch
+      :error, reason -> {:error, reason}
+    end
+  end
+end
+
+defmodule LookyLoo do
+  import Kino.Shorts
+
+  @form Kino.Control.form(
+    [
+      node: Kino.Input.text("Node", default: "daedal1@127.0.0.1"),
+      cookie: Kino.Input.password("Cookie", default: "daedal_cookie"),
+      show: Kino.Input.checkbox("Show hidden", default: false)
+    ],
+    submit: "Send"
+  )
+  @output frame()
+  
+  def render do
+    # subscribe to the stream of control events
+    [form: @form]
+    |> Kino.Control.tagged_stream()
+    |> Kino.listen(&update/1)
+
+    # render frame to the livebook
+    Kino.render(@form)
+    Kino.render(@output)
+    Kino.nothing()
+  end
+  
+  defp update({:form, %{type: :submit, data: %{node: "", cookie: ""}}}), do: render_error("Node and Cookie must be set")
+  defp update({:form, %{type: :submit, data: %{node: ""}}}), do: render_error("Node must be set")
+  defp update({:form, %{type: :submit, data: %{cookie: ""}}}), do: render_error("Cookie must be set")
+  defp update({:form, %{type: :submit, data: %{node: node, cookie: cookie, show: show}}}) do
+    DaedalQuery.fetch_deployments(node, cookie)
+    |> case do
+      {:ok, []} -> 
+        render_success("No deployments found!")
+      {:ok, nodes} -> 
+        graph = Graph.new(nodes, show: show)
+        details = Details.new(nodes)
+        Kino.Layout.tabs([
+          Clusters: graph |> Kino.Mermaid.new(),
+          Raw: graph |> Kino.Text.new(),
+          Details: details
+        ])
+        |> to_output()
+      {:error, reason} -> 
+        render_error("Error calling #{node} with reason: #{inspect(reason)}")
+    end
+  end
+
+  defp to_output(renderable), do: Kino.Frame.render(@output, renderable)
+
+  defp render_success(msg) do
+    msg
+    |> colorize(:light_green)
+    |> Kino.Text.new(terminal: true)
+    |> to_output()
+  end
+
+  defp render_error(msg) do
+    msg
+    |> colorize(:red)
+    |> Kino.Text.new(terminal: true)
+    |> to_output()
+  end
+  
+  defp colorize(msg, color) do
+    [color, msg, :reset]
+    |> IO.ANSI.format()
+    |> to_string()
+  end
+end
+
+LookyLoo.render()
+```
+
+<!-- livebook:{"offset":4884,"stamp":{"token":"XCP.iK7V_PK3Pp4rEL38c66PfAEUrzobmLOMnzSvOrsyaNpjWT4eKyamVSX_l7z01KsbgT_Eo2sQ2k_1_B-JF5Fj4GbRPx3BOc1Y8LEIeAmtiH5XjU4aNeEb7A","version":2}} -->
