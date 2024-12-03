@@ -22,6 +22,13 @@ defmodule DaedalWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    pipe_through :admins_only
+
+    scope "/beacon" do
+      live "/deployments", DaedalBeacon.RegistryLive, :index
+      live "/deployments/:node", DaedalBeacon.DeploymentLive, :show
+    end
   end
 
   scope "/" do
