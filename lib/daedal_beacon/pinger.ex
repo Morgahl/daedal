@@ -17,10 +17,9 @@ defmodule DaedalBeacon.Pinger do
     :beacon_cookie,
     :beacon_node,
     :connection_state,
+    :interval,
     :timer_ref,
-    :deployment,
-    :connected_interval,
-    :connecting_interval
+    :deployment
   ]
 
   @type connection_state :: :connecting | :connected | :registered
@@ -29,16 +28,15 @@ defmodule DaedalBeacon.Pinger do
           beacon_cookie: RPC.cookie(),
           beacon_node: node(),
           connection_state: connection_state(),
-          deployment: Deployment.t(),
-          connected_interval: pos_integer(),
-          connecting_interval: pos_integer()
+          interval: pos_integer(),
+          timer_ref: reference(),
+          deployment: Deployment.t()
         }
 
-  @default_connected_interval 60 * 1000
-  @default_connecting_interval 5 * 1000
+  @default_interval 5 * 1000
 
   def child_spec(opts) do
-    opts = Keyword.take(opts, [:beacon_cookie, :beacon_node, :connected_interval, :connecting_interval])
+    opts = Keyword.take(opts, [:beacon_cookie, :beacon_node, :interval])
 
     %{
       id: __MODULE__,
@@ -46,20 +44,15 @@ defmodule DaedalBeacon.Pinger do
     }
   end
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  def handoff(new_beacon_nodes) do
-    GenServer.call(__MODULE__, {:handoff, new_beacon_nodes})
-  end
+  def handoff(new_beacon_nodes), do: GenServer.call(__MODULE__, {:handoff, new_beacon_nodes})
 
   @impl GenServer
   def init(opts) do
     beacon_cookie = Keyword.fetch!(opts, :beacon_cookie)
     beacon_node = Keyword.fetch!(opts, :beacon_node)
-    connected_interval = Keyword.get(opts, :connected_interval, @default_connected_interval)
-    connecting_interval = Keyword.get(opts, :connecting_interval, @default_connecting_interval)
+    interval = Keyword.get(opts, :interval, @default_interval)
     metadata = Keyword.get(opts, :metadata, [])
     deployment = Deployment.new(metadata)
 
@@ -68,9 +61,10 @@ defmodule DaedalBeacon.Pinger do
       beacon_node: beacon_node,
       connection_state: :connecting,
       deployment: deployment,
-      connected_interval: connected_interval,
-      connecting_interval: connecting_interval
+      interval: interval
     }
+
+    :net_kernel.monitor_nodes(true, node_type: :all)
 
     {:ok, loop(state)}
   end
@@ -85,7 +79,7 @@ defmodule DaedalBeacon.Pinger do
     state =
       state
       |> cancel_next_loop()
-      |> Map.put(:connection_state, :connecting)
+      |> disconnect()
       |> merge_nodes(new_beacon_nodes)
       |> loop()
 
@@ -98,6 +92,12 @@ defmodule DaedalBeacon.Pinger do
   end
 
   @impl GenServer
+  def handle_info({:nodeup, _node, _metadata}, state), do: {:noreply, loop(state)}
+
+  def handle_info({:nodedown, node, _metadata}, state = %__MODULE__{beacon_node: node}), do: {:noreply, loop(disconnect(state))}
+  def handle_info({:nodedown, _node, _metadata}, state), do: {:noreply, loop(state)}
+
+  @impl GenServer
   def handle_info(msg, state) do
     Logger.warning("#{inspect(__MODULE__)} received unhandled message", self: Node.self(), message: msg)
     {:noreply, state}
@@ -105,19 +105,24 @@ defmodule DaedalBeacon.Pinger do
 
   @impl GenServer
   def terminate(_reason, state) do
+    :net_kernel.monitor_nodes(false, node_type: :all)
+
     state
     |> cancel_next_loop()
     |> disconnect()
   end
 
   defp loop(state = %__MODULE__{}) do
+    Logger.debug("#{inspect(__MODULE__)} connection loop", self: Node.self(), state: state)
+
     state
+    |> cancel_next_loop()
     |> maybe_connect()
     |> setup_next_loop()
   end
 
-  defp maybe_connect(state = %__MODULE__{connection_state: :connecting, beacon_node: beacon_nodes}) when is_list(beacon_nodes) do
-    beacon_nodes
+  defp maybe_connect(state = %__MODULE__{connection_state: :connecting, beacon_node: [h | t]}) do
+    [h | Enum.shuffle(t)]
     |> Enum.reduce(state, fn
       beacon_node, state = %__MODULE__{connection_state: :connecting} -> connect(state, beacon_node)
       _beacon_node, state = %__MODULE__{connection_state: :connected} -> register(state)
@@ -136,12 +141,23 @@ defmodule DaedalBeacon.Pinger do
   end
 
   defp maybe_connect(state = %__MODULE__{connection_state: :registered}) do
-    if state.beacon_node in Node.list(:hidden) do
-      state
-    else
-      maybe_connect(%__MODULE__{state | connection_state: :connecting})
+    new_dep = Deployment.new()
+
+    old_visible = state.deployment.neighbors[:visible] |> Enum.sort()
+    old_hidden = state.deployment.neighbors[:hidden] |> Enum.sort()
+    new_visible = new_dep.neighbors[:visible] |> Enum.sort()
+    new_hidden = new_dep.neighbors[:hidden] |> Enum.sort()
+
+    cond do
+      not (length(old_visible) === length(new_visible) and Enum.all?(Enum.zip(old_visible, new_visible), &same/1)) -> register(state)
+      not (length(old_hidden) === length(new_hidden) and Enum.all?(Enum.zip(old_hidden, new_hidden), &same/1)) -> register(state)
+      state.beacon_node in Node.list(:hidden) -> state
+      true -> maybe_connect(%__MODULE__{state | connection_state: :connecting})
     end
   end
+
+  defp same({n, n}), do: true
+  defp same(_), do: false
 
   defp connect(state = %__MODULE__{connection_state: :connecting}, beacon_node) do
     case RPC.connect_hidden(beacon_node, state.beacon_cookie) do
@@ -151,12 +167,16 @@ defmodule DaedalBeacon.Pinger do
     end
   end
 
-  defp register(state = %__MODULE__{connection_state: :connected}) do
+  defp register(state = %__MODULE__{connection_state: conn_state}) when conn_state in [:connected, :registered] do
     Logger.debug("#{inspect(__MODULE__)} registering with Beacon server", self: Node.self(), beacon_node: state.beacon_node)
+    state = %__MODULE__{state | deployment: Deployment.new()}
 
     case RPC.call(state.beacon_node, state.beacon_cookie, Registry, :register, [state.deployment]) do
       {:ok, :already_registered} ->
-        Logger.warning("#{inspect(__MODULE__)} already registered deployment with Beacon server",
+        %__MODULE__{state | connection_state: :registered}
+
+      {:ok, :updated} ->
+        Logger.debug("#{inspect(__MODULE__)} updated deployment with Beacon server",
           self: Node.self(),
           beacon_node: state.beacon_node
         )
@@ -191,12 +211,7 @@ defmodule DaedalBeacon.Pinger do
     end
   end
 
-  defp disconnect(state = %__MODULE__{connection_state: :connecting}) do
-    Logger.info("#{inspect(__MODULE__)} already disconnected from Beacon server",
-      self: Node.self(),
-      beacon_node: state.beacon_node
-    )
-  end
+  defp disconnect(state = %__MODULE__{connection_state: :connecting}), do: state
 
   defp disconnect(state = %__MODULE__{connection_state: conn_state}) when conn_state in [:connected, :registered] do
     Logger.info("#{inspect(__MODULE__)} disconnecting from Beacon server",
@@ -220,16 +235,14 @@ defmodule DaedalBeacon.Pinger do
   end
 
   defp setup_next_loop(state = %__MODULE__{connection_state: :connecting}) do
-    %__MODULE__{state | timer_ref: Process.send_after(self(), :loop, state.connecting_interval)}
+    %__MODULE__{state | timer_ref: Process.send_after(self(), :loop, state.interval)}
   end
 
   defp setup_next_loop(state = %__MODULE__{connection_state: :connected}) do
-    %__MODULE__{state | timer_ref: Process.send_after(self(), :loop, state.connected_interval)}
+    %__MODULE__{state | timer_ref: Process.send_after(self(), :loop, state.interval)}
   end
 
-  defp setup_next_loop(state = %__MODULE__{connection_state: :registered}) do
-    %__MODULE__{state | timer_ref: Process.send_after(self(), :loop, state.connected_interval)}
-  end
+  defp setup_next_loop(state), do: state
 
   defp cancel_next_loop(state = %__MODULE__{timer_ref: timer_ref}) when is_reference(timer_ref) do
     Process.cancel_timer(timer_ref)

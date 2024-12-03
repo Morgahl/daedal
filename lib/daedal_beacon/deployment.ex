@@ -32,6 +32,7 @@ defmodule DaedalBeacon.Deployment do
            spec: Keyword.drop(spec, [:description, :vsn])
          }}
       end
+      |> Enum.sort_by(&elem(&1, 0))
     end
   end
 
@@ -143,8 +144,9 @@ defmodule DaedalBeacon.Deployment do
     :node,
     :name,
     :version,
-    :applications,
+    # :applications,
     :system_info,
+    :neighbors,
     :metadata
   ]
 
@@ -152,8 +154,9 @@ defmodule DaedalBeacon.Deployment do
           node: atom(),
           name: atom(),
           version: any(),
-          applications: [Applications.t()],
+          # applications: [Applications.t()],
           system_info: SystemInfo.t(),
+          neighbors: [{:visible, [atom()]} | {:hidden, [atom()]}],
           metadata: Keyword.t()
         }
 
@@ -172,8 +175,9 @@ defmodule DaedalBeacon.Deployment do
       node: Node.self(),
       name: app,
       version: version,
-      applications: Applications.new(),
+      # applications: Applications.new(),
       system_info: SystemInfo.new(),
+      neighbors: get_neighbors(),
       metadata: metadata
     }
   end
@@ -192,5 +196,12 @@ defmodule DaedalBeacon.Deployment do
       {:ok, value} -> value
       :undefined -> :undefined
     end
+  end
+
+  defp get_neighbors() do
+    [
+      {:visible, Node.list() |> Enum.sort()},
+      {:hidden, Node.list(:hidden) |> Enum.sort()}
+    ]
   end
 end
