@@ -26,16 +26,15 @@ defmodule DaedalRemote.Task.Server do
           monitor_ref: reference() | nil,
           module: module(),
           progress: DaedalTask.progress(),
-          status: status(),
+          status: DaedalTask.status(),
           torn_down: boolean(),
           teardown_result: DaedalTask.teardown_result(),
-          result: nil | any(),
+          result: DaedalTask.run_result(),
           logs: [log()],
           log_count: non_neg_integer(),
           max_logs: non_neg_integer()
         }
 
-  @type status :: :starting | :running | :completed | {:failed, any()}
   @type log :: {Logger.level(), DateTime.t(), String.t(), Keyword.t()}
 
   @type opt :: {:module, module()} | {:shutdown, non_neg_integer()}
@@ -43,10 +42,10 @@ defmodule DaedalRemote.Task.Server do
 
   @default_opts [:extra_args, :module, shutdown: 30_000]
 
-  @spec status(module(), non_neg_integer(), timeout()) :: {status(), DaedalTask.progress(), [log()]}
+  @spec status(module(), non_neg_integer(), timeout()) :: {DaedalTask.status(), DaedalTask.progress(), [log()]}
   def status(module, log_n \\ 10, timeout \\ :timer.seconds(5)), do: GenServer.call(module, {:status, log_n}, timeout)
 
-  @spec result(module(), timeout()) :: any()
+  @spec result(module(), timeout()) :: DaedalTask.run_result() | {:status, DaedalTask.status()} | {:failed, any()}
   def result(module, timeout \\ :timer.seconds(5)), do: GenServer.call(module, :get_result, timeout)
 
   @spec log(module(), Logger.level(), String.t(), Keyword.t()) :: :ok
@@ -174,7 +173,7 @@ defmodule DaedalRemote.Task.Server do
   @impl GenServer
   def handle_info({:EXIT, from, reason}, %__MODULE__{module: module} = state) when from == self() do
     Logger.debug("#{inspect(module)} exited", reason: inspect(reason))
-    {:stop, reason, %__MODULE__{state | monitor_ref: nil}}
+    {:stop, reason, state}
   end
 
   @impl GenServer
