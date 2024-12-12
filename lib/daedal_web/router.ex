@@ -21,10 +21,10 @@ defmodule DaedalWeb.Router do
   scope "/", DaedalWeb do
     pipe_through :browser
 
-    pipe_through :admins_only
-
     live_session :admin, session: %{} do
       live "/", HomeLive
+
+      pipe_through :admins_only
 
       scope "/beacon" do
         live "/deployments", DaedalBeacon.RegistryLive

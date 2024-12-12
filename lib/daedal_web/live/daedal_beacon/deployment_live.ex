@@ -13,13 +13,21 @@ defmodule DaedalWeb.DaedalBeacon.DeploymentLive do
   end
 
   @impl true
-  def mount(%{"node" => node}, _session, socket) do
-    with {:ok, deployment} <- get_deployment(node),
-         :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.updated_topic()),
+  def mount(_params, _session, socket) do
+    with :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.updated_topic()),
          :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.unregistered_topic()) do
-      {:ok, assign(socket, deployment: deployment, registered: true)}
+      {:ok, socket}
     else
       {:error, reason} -> {:ok, return_to_deployments(socket, :error, reason)}
+    end
+  end
+
+  @impl true
+  def handle_params(%{"node" => node}, _uri, socket) do
+    with {:ok, deployment} <- get_deployment(node) do
+      {:noreply, assign(socket, deployment: deployment)}
+    else
+      {:error, reason} -> {:noreply, return_to_deployments(socket, :error, reason)}
     end
   end
 
@@ -53,7 +61,6 @@ defmodule DaedalWeb.DaedalBeacon.DeploymentLive do
 
   defp get_deployment(node) do
     node
-    |> URI.decode()
     |> String.to_existing_atom()
     |> get_atom_deployment()
   rescue

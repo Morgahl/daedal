@@ -29,12 +29,18 @@ defmodule DaedalWeb.DaedalBeaconComponents do
 
   def deployment_minimal(assigns) do
     ~H"""
-    <.link navigate={~p"/beacon/deployments/#{encode_uri_safe(@deployment.node)}"}>
-      <div>
-        <h2>Node: {@deployment.node}</h2>
-        <p>App: {@deployment.name} ({@deployment.version})</p>
-      </div>
-    </.link>
+    <div class="relative flex flex-col my-2 bg-white shadow-sm border border-slate-300 rounded-lg w-min" id={@deployment.node}>
+      <.link patch={~p"/beacon/deployments/#{encode_uri_safe(@deployment.node)}"}>
+        <div class="p-4">
+          <h5 class="mb-2 text-slate-800 text-l font-semibold">
+            {@deployment.node}
+          </h5>
+          <p class="text-slate-600 leading-normal font-light">
+            {@deployment.name} ({@deployment.version})
+          </p>
+        </div>
+      </.link>
+    </div>
     """
   end
 
@@ -48,7 +54,7 @@ defmodule DaedalWeb.DaedalBeaconComponents do
       <.metadata metadata={@deployment.metadata} />
       <.neighbors neighbors={@deployment.neighbors} />
       <.system_info system_info={@deployment.system_info} />
-      <p>Tasks: <pre>{inspect(@deployment.daedal_remote_tasks, pretty: true)}</pre></p>
+      <p>Tasks: <pre>{inspect(@deployment.daedal_remote_tasks, pretty: true, limit: :infinity, width: 0)}</pre></p>
       <.applications applications={@deployment.applications} />
     </section>
     """
@@ -85,11 +91,15 @@ defmodule DaedalWeb.DaedalBeaconComponents do
       <h2>Neighbors</h2>
       <ul>
         <%= for {type, nodes} when nodes != [] <- @neighbors do %>
-          <li>
+          <li id={type}>
             <strong>{type}:</strong>
             <ul>
               <%= for node <- nodes do %>
-                <li>- {node}</li>
+                <li id={"#{type}-#{node}"}>
+                  <.link patch={~p"/beacon/deployments/#{encode_uri_safe(node)}"}>
+                    - {node}
+                  </.link>
+                </li>
               <% end %>
             </ul>
           </li>
@@ -133,7 +143,7 @@ defmodule DaedalWeb.DaedalBeaconComponents do
     ~H"""
     <section>
       <h3>CPU Info</h3>
-      <p>Topology: <pre><%= inspect(@cpu_info.cpu_topology, pretty: true) %></pre></p>
+      <p>Topology: <pre><%= inspect(@cpu_info.cpu_topology, pretty: true, limit: :infinity) %></pre></p>
       <p>SMP Support: {@cpu_info.smp_support}</p>
       <p>Dirty CPU Schedulers: {@cpu_info.dirty_cpu_schedulers}</p>
       <p>Dirty IO Schedulers: {@cpu_info.dirty_io_schedulers}</p>
@@ -172,10 +182,10 @@ defmodule DaedalWeb.DaedalBeaconComponents do
 
   def application(assigns) do
     ~H"""
-    <section>
+    <section id={@application.name}>
       <h3><strong>{@application.name} ({@application.version})</strong></h3>
       <p>{@application.description}</p>
-      <pre>{inspect(@application.spec, pretty: true)}</pre>
+      <pre>{inspect(@application.spec, pretty: true, limit: :infinity, width: 0)}</pre>
     </section>
     """
   end

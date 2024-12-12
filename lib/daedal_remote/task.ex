@@ -79,15 +79,37 @@ defmodule DaedalRemote.Task do
 
   @spec implementing_modules() :: [module()]
   def implementing_modules() do
-    :code.all_loaded()
-    |> Enum.map(&elem(&1, 0))
+    :code.all_available()
+    |> Stream.map(&elem(&1, 0))
+    |> Stream.map(fn
+      [?E, ?l, ?i, ?x, ?i, ?r, ?. | _] = charlist -> String.to_atom(to_string(charlist))
+      _ -> nil
+    end)
     |> Enum.filter(&implements_behaviour?/1)
   end
 
   @spec implements_behaviour?(module()) :: boolean()
+  def implements_behaviour?(nil), do: false
+
   def implements_behaviour?(module) do
-    function_exported?(module, :setup, 1) and
-      function_exported?(module, :run, 1) and
-      function_exported?(module, :teardown, 3)
+    if Code.loaded?(module),
+      do:
+        function_exported?(module, :setup, 1) and
+          function_exported?(module, :run, 1) and
+          function_exported?(module, :teardown, 3),
+      else: functions_defined?(module, setup: 1, run: 1, teardown: 3)
+  end
+
+  # TODO: move this into behaviour util module
+  # This essentially looks for the functions in the module's exports without loading the module along the way
+  defp functions_defined?(module, funcs_with_arities) do
+    case :code.get_object_code(module) do
+      {^module, binary, _} ->
+        {:ok, {_, [{:exports, exports}]}} = :beam_lib.chunks(binary, [:exports])
+        Enum.all?(funcs_with_arities, &(&1 in exports))
+
+      _ ->
+        false
+    end
   end
 end

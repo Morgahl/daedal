@@ -8,7 +8,7 @@ defmodule DaedalWeb.HomeLive do
     ~H"""
     <div>
       <%= for route <- @routes do %>
-        <.link navigate={route.path}>
+        <.link patch={route.path}>
           <p>{inspect(elem(route.metadata.mfa, 0))}</p>
           <pre>{route.path}</pre>
         </.link>

@@ -26,14 +26,20 @@ defmodule DaedalWeb.DaedalBeacon.RegistryLive do
   end
 
   @impl true
-  def mount(params, _session, socket) do
-    with search <- fix_params(params),
-         deployments <- get_deployments(search),
-         :ok <- subscribe() do
-      {:ok, assign(socket, search: to_form(search), deployments: deployments)}
+  def mount(_params, _session, socket) do
+    with :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.registered_topic()),
+         :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.unregistered_topic()) do
+      {:ok, assign(socket, deployments: [])}
     else
-      {:error, reason} -> {:error, reason}
+      {:error, reason} -> {:ok, return_to_home(socket, :error, reason)}
     end
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    search = fix_params(params)
+    deployments = get_deployments(search)
+    {:noreply, assign(socket, search: to_form(search), deployments: deployments)}
   end
 
   @impl true
@@ -75,20 +81,9 @@ defmodule DaedalWeb.DaedalBeacon.RegistryLive do
 
   @impl true
   def terminate(reason, _socket) do
-    with :ok <- unsubscribe() do
+    with :ok <- Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.registered_topic()),
+         :ok <- Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.unregistered_topic()) do
       reason
-    end
-  end
-
-  defp subscribe do
-    with :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.registered_topic()) do
-      Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.unregistered_topic())
-    end
-  end
-
-  defp unsubscribe do
-    with :ok <- Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.registered_topic()) do
-      Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.unregistered_topic())
     end
   end
 
@@ -118,4 +113,10 @@ defmodule DaedalWeb.DaedalBeacon.RegistryLive do
 
   defp fix_sort(%{"sort" => sort} = params) when sort in ["asc", "desc"], do: params
   defp fix_sort(%{} = params), do: Map.put_new(params, "sort", "asc")
+
+  defp return_to_home(socket, level, msg) when level in [:ok, :info, :error] and is_binary(msg) do
+    socket
+    |> put_flash(level, msg)
+    |> push_navigate(to: ~p"/")
+  end
 end
