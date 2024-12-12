@@ -15,18 +15,11 @@ Mix.install([
 ```elixir
 defmodule Graph do
   def new(nodes, show: show) do
+    display_nodes = drop_hidden(nodes, !show)
     """
     erDiagram
-    #{nodes
-      |> drop_hidden(!show)
-      |> Enum.sort_by(&elem(&1, 0))
-      |> Enum.map_join("\n", fn {node, _} -> "#{extract_base_name(node)}[\"#{node}\"] {}" end)}
-    #{nodes
-      |> drop_hidden(!show)
-      |> Enum.map(&clean_node/1)
-      |> Enum.flat_map(&extract_edges/1)
-      |> Enum.sort()
-      |> Enum.map_join("\n", fn {node1, node2, visibility} -> "#{node1} ||--|| #{node2} : #{visibility}" end)}
+    #{build_er_nodes(display_nodes)}
+    #{build_er_edges(display_nodes)}
     """
   end
 
@@ -39,6 +32,20 @@ defmodule Graph do
         end)
       {node, new}
     end
+  end
+  
+  defp build_er_nodes(nodes) do
+    nodes
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map_join("\n", fn {node, _} -> "#{extract_base_name(node)}[\"#{node}\"] {}" end)
+  end
+  
+  defp build_er_edges(nodes) do
+    nodes    
+    |> Enum.map(&clean_node/1)
+    |> Enum.flat_map(&extract_edges/1)
+    |> Enum.sort()
+    |> Enum.map_join("\n", fn {node1, node2, visibility} -> "#{node1} ||--|| #{node2} : #{visibility}" end)
   end
   
   defp clean_node({_, %{node: fq_node, neighbors: neighbors}}) do
@@ -132,7 +139,6 @@ defmodule LookyLoo do
     Kino.nothing()
   end
   
-  defp update({:form, %{type: :submit, data: %{node: "", cookie: ""}}}), do: render_error("Node and Cookie must be set")
   defp update({:form, %{type: :submit, data: %{node: ""}}}), do: render_error("Node must be set")
   defp update({:form, %{type: :submit, data: %{cookie: ""}}}), do: render_error("Cookie must be set")
   defp update({:form, %{type: :submit, data: %{node: node, cookie: cookie, show: show}}}) do
@@ -180,4 +186,4 @@ end
 LookyLoo.render()
 ```
 
-<!-- livebook:{"offset":4884,"stamp":{"token":"XCP.iK7V_PK3Pp4rEL38c66PfAEUrzobmLOMnzSvOrsyaNpjWT4eKyamVSX_l7z01KsbgT_Eo2sQ2k_1_B-JF5Fj4GbRPx3BOc1Y8LEIeAmtiH5XjU4aNeEb7A","version":2}} -->
+<!-- livebook:{"offset":4895,"stamp":{"token":"XCP.hyk2p57qBIxzOzBvBWi2PrCpJMz_yANduPQ-eIZQVEBxrOTYAXdTMbNEhIQZw7hRhSHwFgWqNmHL40uK_Y3uaVohXHdz4gEmHrBesvXZi5kTK76rqSn_3A","version":2}} -->

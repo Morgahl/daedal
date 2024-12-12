@@ -80,7 +80,8 @@ defmodule DaedalRemote.Task do
   @spec implementing_modules() :: [module()]
   def implementing_modules() do
     :code.all_loaded()
-    |> Enum.filter(&implements_behaviour?(elem(&1, 0)))
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.filter(&implements_behaviour?/1)
   end
 
   @spec implements_behaviour?(module()) :: boolean()

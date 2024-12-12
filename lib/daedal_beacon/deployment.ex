@@ -7,15 +7,15 @@ defmodule DaedalBeacon.Deployment do
   defmodule Applications do
     defstruct [
       :name,
-      :description,
       :version,
+      :description,
       :spec
     ]
 
     @type t :: %{
             name: atom(),
-            description: String.t(),
             version: String.t(),
+            description: String.t(),
             spec: Keyword.t()
           }
 
@@ -27,8 +27,8 @@ defmodule DaedalBeacon.Deployment do
         {app,
          %__MODULE__{
            name: app,
-           description: List.to_string(description),
            version: List.to_string(version),
+           description: List.to_string(description),
            spec: Keyword.drop(spec, [:description, :vsn])
          }}
       end
@@ -151,6 +151,7 @@ defmodule DaedalBeacon.Deployment do
     :applications,
     :system_info,
     :neighbors,
+    :daedal_remote_tasks,
     :metadata
   ]
 
@@ -161,6 +162,7 @@ defmodule DaedalBeacon.Deployment do
           applications: [Applications.t()],
           system_info: SystemInfo.t(),
           neighbors: [{:visible, [atom()]} | {:hidden, [atom()]}],
+          daedal_remote_tasks: [module()],
           metadata: Keyword.t()
         }
 
@@ -182,6 +184,7 @@ defmodule DaedalBeacon.Deployment do
       applications: Applications.new(),
       system_info: SystemInfo.new(),
       neighbors: get_neighbors(),
+      daedal_remote_tasks: DaedalRemote.Task.implementing_modules(),
       metadata: metadata
     }
   end

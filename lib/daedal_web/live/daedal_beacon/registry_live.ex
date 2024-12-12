@@ -47,8 +47,29 @@ defmodule DaedalWeb.DaedalBeacon.RegistryLive do
   end
 
   @impl true
-  def handle_info({msg, _node}, socket) when msg in [:registered, :unregistered, :updated] do
-    deployments = get_deployments(socket.assigns.search.source)
+  def handle_info({:registered, node}, socket) do
+    case get_deployment(node) do
+      {:ok, deployment} ->
+        deployments =
+          socket.assigns.deployments
+          |> Enum.reject(fn {n, _} -> n == node end)
+          |> then(&[{node, deployment} | &1])
+          |> Enum.sort_by(fn {node, _deployment} -> node end, String.to_existing_atom(socket.assigns.search.params[:sort] || "asc"))
+
+        {:noreply, assign(socket, deployments: deployments)}
+
+      {:error, _reason} ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:unregistered, node}, socket) do
+    deployments =
+      socket.assigns.deployments
+      |> Enum.reject(fn {n, _} -> n == node end)
+      |> Enum.sort_by(fn {node, _deployment} -> node end, String.to_existing_atom(socket.assigns.search.params[:sort] || "asc"))
+
     {:noreply, assign(socket, deployments: deployments)}
   end
 
@@ -59,13 +80,31 @@ defmodule DaedalWeb.DaedalBeacon.RegistryLive do
     end
   end
 
-  defp subscribe, do: Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.topic())
-  defp unsubscribe, do: Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.topic())
+  defp subscribe do
+    with :ok <- Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.registered_topic()) do
+      Phoenix.PubSub.subscribe(Daedal.PubSub, Registry.unregistered_topic())
+    end
+  end
+
+  defp unsubscribe do
+    with :ok <- Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.registered_topic()) do
+      Phoenix.PubSub.unsubscribe(Daedal.PubSub, Registry.unregistered_topic())
+    end
+  end
 
   defp get_deployments(%{"query" => query, "sort" => dir}) do
     Registry.list()
     |> Enum.filter(fn {_, d} -> String.contains?(Atom.to_string(d.name), query) end)
     |> Enum.sort_by(fn {node, _deployment} -> node end, String.to_existing_atom(dir))
+  end
+
+  defp get_deployment(node) do
+    node
+    |> Registry.lookup()
+    |> case do
+      [] -> {:error, "Deployment not found for #{node}"}
+      [{_node, deployment}] -> {:ok, deployment}
+    end
   end
 
   defp fix_params(params) do

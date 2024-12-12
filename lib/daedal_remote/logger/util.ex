@@ -9,7 +9,7 @@ defmodule DaedalRemote.Logger.LoggerHelper do
   def compiled_levels, do: @compiled_levels
 
   @doc false
-  def patchable_levels, do: dbg(@patchable_levels)
+  def patchable_levels, do: @patchable_levels
 
   @doc false
   def argv(arity), do: Enum.map(1..arity, &Macro.var(:"var_#{&1}", nil))

@@ -73,6 +73,11 @@ defmodule DaedalWeb.Telemetry do
         description: "The time the connection spent waiting before being checked out for the query"
       ),
 
+      # DaedalBeacon Metrics
+      summary("daedal_beacon.registry.count",
+        description: "The number of deployments registered in the local node's registry"
+      ),
+
       # VM Metrics
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),
@@ -83,9 +88,7 @@ defmodule DaedalWeb.Telemetry do
 
   defp periodic_measurements do
     [
-      # A module, function and arguments to be invoked periodically.
-      # This function must call :telemetry.execute/3 and a metric must be added above.
-      # {DaedalWeb, :count_users, []}
+      {DaedalBeacon.Registry, :poll_periodic_measurements, []}
     ]
   end
 end

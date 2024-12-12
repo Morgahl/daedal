@@ -21,24 +21,24 @@ defmodule DaedalWeb.Router do
   scope "/", DaedalWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
-
     pipe_through :admins_only
 
-    scope "/beacon" do
-      live "/deployments", DaedalBeacon.RegistryLive, :index
-      live "/deployments/:node", DaedalBeacon.DeploymentLive, :show
+    live_session :admin, session: %{} do
+      live "/", HomeLive
+
+      scope "/beacon" do
+        live "/deployments", DaedalBeacon.RegistryLive
+        live "/deployments/:node", DaedalBeacon.DeploymentLive
+      end
     end
-  end
 
-  scope "/" do
-    pipe_through [:browser, :admins_only]
+    scope "/tools" do
+      import OrionWeb.Router
+      live_orion "/orion", live_socket_path: "/live"
 
-    import OrionWeb.Router
-    import Phoenix.LiveDashboard.Router
-
-    live_dashboard "/dashboard", metrics: DaedalWeb.Telemetry
-    live_orion "/orion", live_socket_path: "/live"
+      import Phoenix.LiveDashboard.Router
+      live_dashboard "/dashboard", metrics: DaedalWeb.Telemetry
+    end
   end
 
   defp admin_basic_auth(conn, _opts) do

@@ -15,10 +15,14 @@ defmodule DaedalBeacon.Registry do
 
   @default_opts []
 
-  @topic "#{inspect(__MODULE__)}"
+  @registered_topic "#{inspect(__MODULE__)}:registered"
+  @updated_topic "#{inspect(__MODULE__)}:updated"
+  @unregistered_topic "#{inspect(__MODULE__)}:unregistered"
 
   # Public API
-  def topic(), do: @topic
+  def registered_topic(), do: @registered_topic
+  def updated_topic(), do: @updated_topic
+  def unregistered_topic(), do: @unregistered_topic
 
   def child_spec(opts),
     do: %{
@@ -49,6 +53,14 @@ defmodule DaedalBeacon.Registry do
     end
   end
 
+  # Private API
+
+  def poll_periodic_measurements(),
+    do:
+      :telemetry.execute([:daedal_beacon, :registry], %{
+        count: :ets.info(__MODULE__, :size)
+      })
+
   # GenServer Callbacks
   @impl GenServer
   def init(opts) do
@@ -67,6 +79,12 @@ defmodule DaedalBeacon.Registry do
     :net_kernel.monitor_nodes(true, node_type: :all)
 
     {:ok, state}
+  end
+
+  @impl GenServer
+  def handle_continue(:update_self_registration, state) do
+    register_internal(Deployment.new())
+    {:noreply, state}
   end
 
   @impl GenServer
@@ -109,15 +127,15 @@ defmodule DaedalBeacon.Registry do
 
     with [{^node, _}] <- lookup(node),
          :ok <- publish({:registered, node}) do
-      {:noreply, state}
+      {:noreply, state, {:continue, :update_self_registration}}
     else
       [] ->
         Logger.debug("#{inspect(__MODULE__)} node up, no deployments found", nodeup: node)
-        {:noreply, state}
+        {:noreply, state, {:continue, :update_self_registration}}
 
       {:error, reason} ->
         Logger.error("#{inspect(__MODULE__)} failed to lookup node with reason: #{reason}", nodeup: node)
-        {:noreply, state}
+        {:noreply, state, {:continue, :update_self_registration}}
     end
   end
 
@@ -128,11 +146,11 @@ defmodule DaedalBeacon.Registry do
     case unregister_internal(node) do
       :ok ->
         Logger.info("#{inspect(__MODULE__)} successfully unregistered deployments", nodedown: node)
-        {:noreply, state}
+        {:noreply, state, {:continue, :update_self_registration}}
 
       {:error, reason} ->
         Logger.error("#{inspect(__MODULE__)} failed to unregister deployments with reason: #{reason}", nodedown: node)
-        {:noreply, state}
+        {:noreply, state, {:continue, :update_self_registration}}
     end
   end
 
@@ -210,5 +228,7 @@ defmodule DaedalBeacon.Registry do
     RPC.multicall(nodes, DaedalBeacon.Pinger, :handoff, [beacon_nodes])
   end
 
-  defp publish(msg), do: Phoenix.PubSub.broadcast(Daedal.PubSub, @topic, msg)
+  defp publish({:registered, _} = msg), do: Phoenix.PubSub.broadcast(Daedal.PubSub, @registered_topic, msg)
+  defp publish({:updated, _} = msg), do: Phoenix.PubSub.broadcast(Daedal.PubSub, @updated_topic, msg)
+  defp publish({:unregistered, _} = msg), do: Phoenix.PubSub.broadcast(Daedal.PubSub, @unregistered_topic, msg)
 end

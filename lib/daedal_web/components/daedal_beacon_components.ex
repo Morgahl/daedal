@@ -31,8 +31,8 @@ defmodule DaedalWeb.DaedalBeaconComponents do
     ~H"""
     <.link navigate={~p"/beacon/deployments/#{encode_uri_safe(@deployment.node)}"}>
       <div>
-        <h2><%= @deployment.name %> (<%= @deployment.version %>)</h2>
-        <p>Node: <%= @deployment.node %></p>
+        <h2>Node: {@deployment.node}</h2>
+        <p>App: {@deployment.name} ({@deployment.version})</p>
       </div>
     </.link>
     """
@@ -43,11 +43,58 @@ defmodule DaedalWeb.DaedalBeaconComponents do
   def deployment_full(assigns) do
     ~H"""
     <section>
-      <h1><%= @deployment.name %> (<%= @deployment.version %>)</h1>
-      <p>Node: <%= @deployment.node %></p>
-      <.system_info system_info={@deployment.system_info} />
-      <.neighbors neighbors={@deployment.neighbors} />
+      <h1>{@deployment.name} ({@deployment.version})</h1>
+      <p>Node: {@deployment.node}</p>
       <.metadata metadata={@deployment.metadata} />
+      <.neighbors neighbors={@deployment.neighbors} />
+      <.system_info system_info={@deployment.system_info} />
+      <p>Tasks: <pre>{inspect(@deployment.daedal_remote_tasks, pretty: true)}</pre></p>
+      <.applications applications={@deployment.applications} />
+    </section>
+    """
+  end
+
+  attr :metadata, :list, required: true
+
+  def metadata(assigns) do
+    case assigns[:metadata] do
+      [] ->
+        ~H"""
+        """
+
+      _ ->
+        ~H"""
+        <section>
+          <h2>Metadata</h2>
+          <dl>
+            <%= for {key, value} <- @metadata do %>
+              <dt>{key}</dt>
+              <dd>{inspect(value)}</dd>
+            <% end %>
+          </dl>
+        </section>
+        """
+    end
+  end
+
+  attr :neighbors, :list, required: true
+
+  def neighbors(assigns) do
+    ~H"""
+    <section>
+      <h2>Neighbors</h2>
+      <ul>
+        <%= for {type, nodes} when nodes != [] <- @neighbors do %>
+          <li>
+            <strong>{type}:</strong>
+            <ul>
+              <%= for node <- nodes do %>
+                <li>- {node}</li>
+              <% end %>
+            </ul>
+          </li>
+        <% end %>
+      </ul>
     </section>
     """
   end
@@ -71,11 +118,11 @@ defmodule DaedalWeb.DaedalBeaconComponents do
     ~H"""
     <section>
       <h3>OS Info</h3>
-      <p>Architecture: <%= @os_info.system_architecture %></p>
-      <p>Wordsize: <%= @os_info.wordsize %></p>
-      <p>Threads: <%= @os_info.threads %></p>
-      <p>Kernel Poll: <%= @os_info.kernel_poll %></p>
-      <p>Time Warp Mode: <%= @os_info.time_warp_mode %></p>
+      <p>Architecture: {@os_info.system_architecture}</p>
+      <p>Wordsize: {@os_info.wordsize}</p>
+      <p>Threads: {@os_info.threads}</p>
+      <p>Kernel Poll: {@os_info.kernel_poll}</p>
+      <p>Time Warp Mode: {@os_info.time_warp_mode}</p>
     </section>
     """
   end
@@ -86,11 +133,11 @@ defmodule DaedalWeb.DaedalBeaconComponents do
     ~H"""
     <section>
       <h3>CPU Info</h3>
-      <p>Topology: <%= inspect(@cpu_info.cpu_topology) %></p>
-      <p>SMP Support: <%= @cpu_info.smp_support %></p>
-      <p>Dirty CPU Schedulers: <%= @cpu_info.dirty_cpu_schedulers %></p>
-      <p>Dirty IO Schedulers: <%= @cpu_info.dirty_io_schedulers %></p>
-      <p>Emulator Flavor: <%= @cpu_info.emu_flavor %></p>
+      <p>Topology: <pre><%= inspect(@cpu_info.cpu_topology, pretty: true) %></pre></p>
+      <p>SMP Support: {@cpu_info.smp_support}</p>
+      <p>Dirty CPU Schedulers: {@cpu_info.dirty_cpu_schedulers}</p>
+      <p>Dirty IO Schedulers: {@cpu_info.dirty_io_schedulers}</p>
+      <p>Emulator Flavor: {@cpu_info.emu_flavor}</p>
     </section>
     """
   end
@@ -101,49 +148,38 @@ defmodule DaedalWeb.DaedalBeaconComponents do
     ~H"""
     <section>
       <h3>Version Info</h3>
-      <p>OTP Release: <%= @version_info.otp_release %></p>
-      <p>ERTS Version: <%= @version_info.erts_version %></p>
-      <p>Emulator Type: <%= @version_info.emu_type %></p>
+      <p>OTP Release: {@version_info.otp_release}</p>
+      <p>ERTS Version: {@version_info.erts_version}</p>
+      <p>Emulator Type: {@version_info.emu_type}</p>
     </section>
     """
   end
 
-  attr :neighbors, :list, required: true
+  attr :applications, :list, required: true
 
-  def neighbors(assigns) do
+  def applications(assigns) do
+    ~H"""
+    <article>
+      <h2>Applications</h2>
+      <%= for {_name, application} <- @applications do %>
+        <.application application={application} />
+      <% end %>
+    </article>
+    """
+  end
+
+  attr :application, DaedalBeacon.Deployment.Applications, required: true
+
+  def application(assigns) do
     ~H"""
     <section>
-      <h2>Neighbors</h2>
-      <ul>
-        <%= for {type, nodes} <- @neighbors do %>
-          <li><strong><%= type %>:</strong> <%= Enum.join(nodes, ", ") %></li>
-        <% end %>
-      </ul>
+      <h3><strong>{@application.name} ({@application.version})</strong></h3>
+      <p>{@application.description}</p>
+      <pre>{inspect(@application.spec, pretty: true)}</pre>
     </section>
     """
   end
 
-  attr :metadata, :list, required: true
-
-  def metadata(assigns) do
-    ~H"""
-    <section>
-      <h2>Metadata</h2>
-      <dl>
-        <%= for {key, value} <- @metadata do %>
-          <dt><%= key %></dt>
-          <dd><%= inspect(value) %></dd>
-        <% end %>
-      </dl>
-    </section>
-    """
-  end
-
-  defp encode_uri_safe(value) when is_atom(value) do
-    URI.encode(Atom.to_string(value))
-  end
-
-  defp encode_uri_safe(value) when is_binary(value) do
-    URI.encode(value)
-  end
+  defp encode_uri_safe(value) when is_atom(value), do: URI.encode(Atom.to_string(value))
+  defp encode_uri_safe(value) when is_binary(value), do: URI.encode(value)
 end
